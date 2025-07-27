@@ -8,7 +8,8 @@ const obtenerOpcionesProducto = async (req, res) => {
     let query = supabase.from('product_options').select('*')
 
     if (product_id) {
-      query = query.eq('product_id', product_id)
+      const productIdNumber = parseInt(product_id, 10)
+      query = query.eq('product_id', productIdNumber)
     }
 
     query = query.eq('is_active', true)
@@ -24,7 +25,12 @@ const obtenerOpcionesProducto = async (req, res) => {
 
 const crearOpcionProducto = async (req, res) => {
   try {
-    const { data, error } = await supabase.from('product_options').insert([req.body]).select();
+    const opcionData = {
+      ...req.body,
+      product_id: parseInt(req.body.product_id, 10)
+    }
+    
+    const { data, error } = await supabase.from('product_options').insert([opcionData]).select();
     if (error) return res.status(500).json({ error: error.message });
     res.status(201).json(data[0]);
   } catch (error) {
@@ -50,13 +56,9 @@ const actualizarOpcionProducto = async (req, res) => {
 const eliminarOpcionProducto = async (req, res) => {
   try {
     const { id } = req.params;
-    const { error } = await supabase
-      .from('product_options')
-      .update({ is_active: false })
-      .eq('id', id);
-    
+    const { error } = await supabase.from('product_options').delete().eq('id', id);
     if (error) return res.status(500).json({ error: error.message });
-    res.json({ message: 'Opción de producto desactivada correctamente' });
+    res.json({ message: 'Opción de producto eliminada correctamente' });
   } catch (error) {
     res.status(500).json({ error: 'Error interno del servidor' });
   }
