@@ -1,5 +1,9 @@
-// controllers/restaurantsController.js
 const supabase = require('../services/supabaseClient');
+
+// Utilidad para convertir string a booleano real
+const parseBoolean = (value) => {
+  return value === true || value === 'true' || value === 'on' || value === '1';
+};
 
 const obtenerRestaurantes = async (req, res) => {
   try {
@@ -13,35 +17,47 @@ const obtenerRestaurantes = async (req, res) => {
 
 const crearRestaurante = async (req, res) => {
   try {
-    const { data, error } = await supabase.from('restaurants').insert([req.body]).select();
+    const restauranteData = {
+      ...req.body,
+      is_active: parseBoolean(req.body.is_active),
+      capacity: req.body.capacity ? Number(req.body.capacity) : null,
+    };
+
+    const { data, error } = await supabase
+      .from('restaurants')
+      .insert([restauranteData])
+      .select();
+
     if (error) return res.status(500).json({ error: error.message });
     res.status(201).json(data[0]);
   } catch (error) {
-  console.error('❌ Error actualizando restaurante:', error);
-  res.status(500).json({ error: error.message || 'Error interno del servidor' });
-}
-
+    console.error('❌ Error creando restaurante:', error);
+    res.status(500).json({ error: error.message || 'Error interno del servidor' });
+  }
 };
 
 const actualizarRestaurante = async (req, res) => {
-    console.log('🔧 [PUT] Body recibido:', req.body)
-    console.log('🔧 [PUT] ID del restaurante:', req.params.id)
-
-    try {
+  try {
     const { id } = req.params;
+
+    const restauranteData = {
+      ...req.body,
+      is_active: parseBoolean(req.body.is_active),
+      capacity: req.body.capacity ? Number(req.body.capacity) : null,
+    };
+
     const { data, error } = await supabase
       .from('restaurants')
-      .update(req.body)
+      .update(restauranteData)
       .eq('id', id)
       .select();
+
     if (error) return res.status(500).json({ error: error.message });
     res.json(data[0]);
   } catch (error) {
-  console.error('❌ Error actualizando restaurante:', error)
-  res.status(500).json({ error: error.message || 'Error interno del servidor' })
-}
-
-
+    console.error('❌ Error actualizando restaurante:', error);
+    res.status(500).json({ error: error.message || 'Error interno del servidor' });
+  }
 };
 
 const eliminarRestaurante = async (req, res) => {
@@ -55,4 +71,9 @@ const eliminarRestaurante = async (req, res) => {
   }
 };
 
-module.exports = { obtenerRestaurantes, crearRestaurante, actualizarRestaurante, eliminarRestaurante };
+module.exports = {
+  obtenerRestaurantes,
+  crearRestaurante,
+  actualizarRestaurante,
+  eliminarRestaurante,
+};
