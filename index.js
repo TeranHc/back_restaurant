@@ -56,13 +56,13 @@ app.use('/api/restaurants', restaurantsRoutes);
 app.use('/api', productosRoutes); // Incluye /api/productos
 
 // 4. Rutas que pueden requerir autenticación según el endpoint
-app.use('/api/pedidos', pedidosRoutes);
-app.use('/api/detalle-pedidos', detallePedidosRoutes);
-app.use('/api/product-options', productOptionsRoutes);
-app.use('/api/order-item-options', orderItemOptionsRoutes);
+app.use('/api', pedidosRoutes);              // CAMBIADO: ahora usa /api en vez de /api/pedidos
+app.use('/api', detallePedidosRoutes);       // CAMBIADO: ahora usa /api en vez de /api/detalle-pedidos
+app.use('/api/product-options', productOptionsRoutes);  // MANTENER: porque en el archivo usas router.get('/')
+app.use('/api', orderItemOptionsRoutes);     // CAMBIADO: ahora usa /api en vez de /api/order-item-options
 
 // 5. Rutas que requieren autenticación (middleware interno)
-app.use('/api/cart', cartRoutes);
+app.use('/api', cartRoutes);                 // CAMBIADO: ahora usa /api en vez de /api/cart
 app.use('/api/reservations', reservationsRoutes);
 app.use('/api/available-slots', availableSlotsRoutes);
 
@@ -98,16 +98,34 @@ app.get('/api', (req, res) => {
       '🔐👨‍💼 GET /api/users - Obtener todos los usuarios (ADMIN)',
       '🔐👨‍💼 PUT /api/users/:id/role - Cambiar rol (ADMIN)',
       
-      // Carrito
+      // Carrito (ACTUALIZADO)
       '🔐 GET /api/cart - Obtener carrito del usuario',
       '🔐 POST /api/cart - Agregar producto al carrito',
       '🔐 PUT /api/cart/:id - Actualizar cantidad en carrito',
-      '🔐 DELETE /api/cart/:id - Eliminar del carrito',
+      '🔐 DELETE /api/cart/:id - Eliminar item del carrito',
+      '🔐 DELETE /api/cart - Limpiar todo el carrito',
       
-      // Pedidos
-      '🔐 POST /api/pedidos - Crear nuevo pedido',
-      '🔐 GET /api/pedidos/user/:userId - Obtener pedidos del usuario',
-      '🔐👨‍💼 GET /api/pedidos - Obtener todos los pedidos (ADMIN)',
+      // Pedidos (ACTUALIZADO)
+      '🔐 GET /api/pedidos - Obtener pedidos (usuario: propios / admin: todos)',
+      '🔐 GET /api/pedidos/:id - Obtener pedido específico por ID',
+      '🔐 POST /api/pedidos - Crear pedido desde carrito',  // ACTUALIZADO
+      '🔐 PATCH /api/pedidos/:id/cancelar - Cancelar pedido',
+      '🔐👨‍💼 PUT /api/pedidos/:id - Actualizar estado del pedido (ADMIN)',
+      '🔐👨‍💼 DELETE /api/pedidos/:id - Eliminar pedido (ADMIN)',
+      // Detalles de Pedidos (NUEVO)
+      '🔐 GET /api/detalle-pedidos - Obtener detalles de pedidos',
+      '🔐 GET /api/detalle-pedidos/:id - Obtener detalle específico por ID',
+      '🔐 POST /api/detalle-pedidos - Crear nuevo detalle de pedido',
+      '🔐 PUT /api/detalle-pedidos/:id - Actualizar detalle de pedido',
+      '🔐 DELETE /api/detalle-pedidos/:id - Eliminar detalle de pedido',
+      
+      // Opciones de Items de Pedidos (NUEVO)
+      '🔐 GET /api/order-item-options - Obtener opciones de items',
+      '🔐 GET /api/order-item-options/:id - Obtener opción específica por ID',
+      '🔐 POST /api/order-item-options - Crear nueva opción de item',
+      '🔐 POST /api/order-item-options/bulk - Crear múltiples opciones',
+      '🔐 PUT /api/order-item-options/:id - Actualizar opción de item',
+      '🔐 DELETE /api/order-item-options/:id - Eliminar opción de item',
       
       // Reservaciones
       '🔐 POST /api/reservations - Crear reservación',
@@ -213,8 +231,13 @@ app.listen(PORT, () => {
   console.log('   ✅ Auth: /api/auth/*');
   console.log('   ✅ Users: /api/users/* & /api/profile');
   console.log('   ✅ Products: /api/productos/*');
+  console.log('   ✅ Categories: /api/categorias/*');
+  console.log('   ✅ Product Options: /api/product-options/*');
   console.log('   ✅ Cart: /api/cart/*');
   console.log('   ✅ Orders: /api/pedidos/*');
+  console.log('   ✅ Order Details: /api/detalle-pedidos/*');
+  console.log('   ✅ Order Options: /api/order-item-options/*');
   console.log('   ✅ Reservations: /api/reservations/*');
+  console.log('   ✅ Available Slots: /api/available-slots/*');
   console.log('=====================================\n');
 });

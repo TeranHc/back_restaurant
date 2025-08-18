@@ -33,8 +33,6 @@ const verifyAdmin = async (authHeader) => {
 // Obtener opciones de producto (PÚBLICO)
 const obtenerOpcionesProducto = async (req, res) => {
   try {
-    console.log('🔍 Obteniendo opciones de producto...');
-    
     const { product_id } = req.query;
 
     let query = supabaseAdmin // Usar supabaseAdmin para bypass RLS
@@ -54,18 +52,16 @@ const obtenerOpcionesProducto = async (req, res) => {
     const { data, error } = await query;
 
     if (error) {
-      console.error('❌ Error obteniendo opciones:', error);
       return res.status(500).json({ error: error.message });
     }
 
-    console.log(`✅ Se obtuvieron ${data?.length || 0} opciones`);
     res.json(data || []);
 
   } catch (error) {
-    console.error('❌ Error interno obteniendo opciones:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 };
+
 
 // Crear opción de producto (SOLO ADMIN)
 const crearOpcionProducto = async (req, res) => {
