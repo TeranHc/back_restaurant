@@ -49,31 +49,32 @@ const verifyAuth = async (authHeader) => {
   }
 };
 
-// Obtener todos los productos (PÚBLICO - sin autenticación requerida)
+// Obtener todos los productos - MODIFICADO para mostrar TODOS los productos
 const obtenerProductos = async (req, res) => {
   try {
     console.log('🔍 Obteniendo productos...');
 
-    // Usar supabaseAdmin para bypassing RLS ya que los productos deben ser públicos
+    // CAMBIO PRINCIPAL: Usamos LEFT JOIN en lugar de INNER JOIN
+    // y removemos todos los filtros restrictivos para mostrar TODOS los productos
     const { data, error } = await supabaseAdmin
       .from('productos')
       .select(`
         *,
-        categories!inner (
+        categories (
           id,
           name,
-          description
+          description,
+          is_active
         ),
-        restaurants!inner (
+        restaurants (
           id,
           name,
           address,
-          phone
+          phone,
+          is_active
         )
       `)
-      .eq('disponible', true)
-      .eq('categories.is_active', true)
-      .eq('restaurants.is_active', true)
+      // Removemos TODOS los filtros para obtener todos los productos
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -81,7 +82,7 @@ const obtenerProductos = async (req, res) => {
       return res.status(500).json({ error: error.message });
     }
 
-    console.log(`✅ Se obtuvieron ${data?.length || 0} productos`);
+    console.log(`✅ Se obtuvieron ${data?.length || 0} productos (TODOS - disponibles y no disponibles)`);
     res.json(data || []);
 
   } catch (error) {
@@ -90,7 +91,7 @@ const obtenerProductos = async (req, res) => {
   }
 };
 
-// Obtener producto por ID (PÚBLICO)
+// Obtener producto por ID - MODIFICADO para mostrar cualquier producto
 const obtenerProductoPorId = async (req, res) => {
   try {
     const { id } = req.params;
@@ -119,7 +120,7 @@ const obtenerProductoPorId = async (req, res) => {
         )
       `)
       .eq('id', id)
-      .eq('disponible', true)
+      // Removemos el filtro .eq('disponible', true)
       .single();
 
     if (error) {

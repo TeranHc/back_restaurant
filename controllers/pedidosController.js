@@ -98,6 +98,128 @@ const obtenerPedidos = async (req, res) => {
   }
 };
 
+
+// Crear pedido desde carrito SIN limpiar carrito
+const crearPedidoManteniendoCarrito = async (req, res) => {
+  try {
+    console.log('📝 Creando pedido desde carrito (sin limpiar)...');
+
+    // 1️⃣ Verificar autenticación
+    const { user, profile } = await verifyAuth(req.headers.authorization);
+    if (!user) {
+      return res.status(401).json({ error: 'Token de autenticación requerido' });
+    }
+
+    // 2️⃣ Obtener carrito del usuario con productos
+    const { data: cartItems, error: cartError } = await supabaseAdmin
+      .from('cart')
+      .select(`
+        id,
+        user_id,
+        product_id,
+        quantity,
+        productos!inner (
+          id,
+          nombre,
+          descripcion,
+          precio,
+          imagen,
+          disponible
+        )
+      `)
+      .eq('user_id', user.id);
+
+    if (cartError) {
+      console.error('❌ Error obteniendo carrito:', cartError);
+      return res.status(500).json({ error: cartError.message });
+    }
+
+    if (!cartItems || cartItems.length === 0) {
+      return res.status(400).json({ error: 'El carrito está vacío.' });
+    }
+
+    // 3️⃣ Validar disponibilidad
+    const productosNoDisponibles = cartItems.filter(item => !item.productos?.disponible);
+    if (productosNoDisponibles.length > 0) {
+      const nombres = productosNoDisponibles.map(item => item.productos?.nombre).join(', ');
+      return res.status(400).json({ error: `Productos no disponibles: ${nombres}` });
+    }
+
+    // 4️⃣ Calcular total
+    const totalCalculado = cartItems.reduce((sum, item) => {
+      return sum + (parseFloat(item.productos.precio) * parseInt(item.quantity));
+    }, 0);
+
+    // 5️⃣ Crear pedido principal
+    const pedidoData = {
+      user_id: user.id,
+      restaurant_id: 1,
+      order_number: generarNumeroOrden(),
+      total: totalCalculado,
+      estado: 'pendiente',
+      fecha: new Date().toISOString(),
+      order_type: req.body.tipo_entrega === 'pickup' ? 'PICKUP' : 'DELIVERY',
+      delivery_address: req.body.direccion_entrega || null,
+      special_instructions: `Teléfono: ${req.body.telefono_contacto || 'No proporcionado'}\nMétodo de pago: ${req.body.metodo_pago || 'No especificado'}\nNotas: ${req.body.notas || 'Ninguna'}`
+    };
+
+    const { data: pedido, error: pedidoError } = await supabaseAdmin
+      .from('pedidos')
+      .insert([pedidoData])
+      .select()
+      .single();
+
+    if (pedidoError) {
+      console.error('❌ Error creando pedido:', pedidoError);
+      return res.status(500).json({ error: pedidoError.message });
+    }
+
+    // 6️⃣ Crear detalles del pedido
+    const detallesData = cartItems.map(item => ({
+      pedido_id: pedido.id,
+      producto_id: item.product_id,
+      cantidad: parseInt(item.quantity),
+      unit_price: parseFloat(item.productos.precio),
+      subtotal: parseFloat(item.productos.precio) * parseInt(item.quantity)
+    }));
+
+    const { data: detalles, error: detallesError } = await supabaseAdmin
+      .from('detalle_pedidos')
+      .insert(detallesData)
+      .select(`
+        *,
+        productos (
+          id,
+          nombre,
+          precio,
+          imagen
+        )
+      `);
+
+    if (detallesError) {
+      console.error('❌ Error creando detalles del pedido:', detallesError);
+      // Rollback: eliminar pedido creado
+      await supabaseAdmin.from('pedidos').delete().eq('id', pedido.id);
+      return res.status(500).json({ error: detallesError.message });
+    }
+
+    // 7️⃣ Retornar pedido completo SIN tocar el carrito
+    const pedidoCompleto = {
+      ...pedido,
+      detalle_pedidos: detalles,
+      carrito_mantenido: cartItems // Devuelve el carrito tal cual
+    };
+
+    console.log(`✅ Pedido creado exitosamente: ${pedido.order_number}`);
+    res.status(201).json(pedidoCompleto);
+
+  } catch (error) {
+    console.error('❌ ERROR creando pedido:', error);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+};
+
+
 // Obtener pedido por ID
 const obtenerPedido = async (req, res) => {
   try {
@@ -172,6 +294,7 @@ const obtenerPedido = async (req, res) => {
 const crearPedido = async (req, res) => {
   try {
     console.log('📝 Creando pedido desde carrito:', req.body);
+    console.log('Items en el carrito:', cartItems);
 
     // Verificar autenticación
     const { user, profile } = await verifyAuth(req.headers.authorization);
@@ -711,5 +834,6 @@ module.exports = {
   crearPedidoYLimpiarCarrito,     // Limpia carrito (función principal)
   actualizarPedido, 
   cancelarPedido,
+  crearPedidoManteniendoCarrito,
   eliminarPedido 
 };
