@@ -77,7 +77,7 @@ const crearOpcionProducto = async (req, res) => {
     }
 
     // Validación
-    const { product_id, option_type, option_value } = req.body;
+    const { product_id, option_type, option_value, extra_price } = req.body;
 
     if (!product_id || !option_type || !option_value) {
       return res.status(400).json({ 
@@ -89,13 +89,14 @@ const crearOpcionProducto = async (req, res) => {
       product_id: parseInt(product_id, 10),
       option_type: option_type.trim(),
       option_value: option_value.trim(),
+      extra_price: extra_price !== undefined ? parseFloat(extra_price) : 0,
       is_active: req.body.is_active !== undefined ? req.body.is_active : true
     };
 
     if (isNaN(opcionData.product_id)) {
       return res.status(400).json({ error: 'product_id debe ser un número válido' });
     }
-    
+
     const { data, error } = await supabaseAdmin
       .from('product_options')
       .insert([opcionData])

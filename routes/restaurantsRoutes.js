@@ -1,8 +1,6 @@
-// routes/restaurantsRoutes.js
 const express = require('express');
 const { 
   obtenerRestaurantes, 
-  obtenerTodosRestaurantes,
   obtenerRestaurantePorId,
   crearRestaurante, 
   actualizarRestaurante, 
@@ -16,29 +14,26 @@ const router = express.Router();
 // RUTAS PÚBLICAS (sin autenticación)
 // ====================================
 
-// Obtener restaurantes activos (acceso público)
+// Obtener todos los restaurantes (activos e inactivos)
 router.get('/', obtenerRestaurantes);
 
-// Obtener restaurante específico por ID (acceso público)
+// Obtener restaurante específico por ID
 router.get('/:id', obtenerRestaurantePorId);
 
 // ====================================
 // RUTAS ADMINISTRATIVAS (requieren auth + rol ADMIN)
 // ====================================
 
-// Obtener TODOS los restaurantes (activos e inactivos) - Solo ADMIN
-router.get('/admin/all', obtenerTodosRestaurantes);
-
-// Crear restaurante - Solo ADMIN
+// Crear restaurante
 router.post('/', crearRestaurante);
 
-// Actualizar restaurante - Solo ADMIN
+// Actualizar restaurante
 router.put('/:id', actualizarRestaurante);
 
-// Eliminar restaurante (hard delete) - Solo ADMIN
+// Eliminar restaurante (hard delete)
 router.delete('/:id', eliminarRestaurante);
 
-// Activar/desactivar restaurante (soft delete) - Solo ADMIN
+// Activar/desactivar restaurante (soft delete)
 router.patch('/:id/toggle-status', toggleEstadoRestaurante);
 
 module.exports = router;
