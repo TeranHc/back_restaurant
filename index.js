@@ -7,8 +7,12 @@ const app = express();
 // ========================================
 // MIDDLEWARES GLOBALES
 // ========================================
+// CORS configurado para múltiples orígenes
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: [
+    'https://restaurante1-beryl.vercel.app', // Tu dominio de Vercel
+    process.env.FRONTEND_URL // Variable de entorno
+  ].filter(Boolean), // Filtrar valores undefined
   credentials: true
 }));
 app.use(express.json());

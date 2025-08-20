@@ -4,7 +4,11 @@
   "description": "Backend para Restaurante conectado a Supabase",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "engines": {
+    "node": "18.x"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",
