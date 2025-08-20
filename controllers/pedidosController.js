@@ -40,7 +40,7 @@ const generarNumeroOrden = () => {
   return `ORD-${timestamp}-${random}`;
 };
 
-// Obtener pedidos (USUARIO: sus pedidos, ADMIN: todos)
+// Obtener pedidos (USUARIO: sus pedidos, ADMIN: todos) - VERSIÓN CORREGIDA
 const obtenerPedidos = async (req, res) => {
   try {
     console.log('📋 Obteniendo pedidos...');
@@ -54,16 +54,14 @@ const obtenerPedidos = async (req, res) => {
       });
     }
 
+    console.log(`👤 Usuario autenticado: ${user.id}`);
+    console.log(`🔑 Rol del usuario: ${profile?.role || 'No definido'}`);
+
+    // OPCIÓN 1: Consulta SIN user_profiles (más simple)
     let query = supabaseAdmin
       .from('pedidos')
       .select(`
         *,
-        user_profiles!inner (
-          id,
-          first_name,
-          last_name,
-          phone
-        ),
         detalle_pedidos (
           id,
           cantidad,
@@ -80,6 +78,9 @@ const obtenerPedidos = async (req, res) => {
     // Si no es admin, solo mostrar sus propios pedidos
     if (profile?.role !== 'ADMIN') {
       query = query.eq('user_id', user.id);
+      console.log(`🔒 Filtrando pedidos para usuario: ${user.id}`);
+    } else {
+      console.log(`👑 Admin detectado - mostrando todos los pedidos`);
     }
 
     const { data, error } = await query.order('created_at', { ascending: false });
@@ -90,15 +91,26 @@ const obtenerPedidos = async (req, res) => {
     }
 
     console.log(`✅ Se obtuvieron ${data?.length || 0} pedidos`);
-    res.json(data || []);
+    
+    // Si necesitas los datos del usuario, los puedes agregar manualmente
+    const pedidosConUsuario = data?.map(pedido => ({
+      ...pedido,
+      // Agregar datos del usuario actual para pedidos propios
+      user_info: profile?.role !== 'ADMIN' ? {
+        first_name: profile?.first_name || user.user_metadata?.first_name || '',
+        last_name: profile?.last_name || user.user_metadata?.last_name || '',
+        phone: profile?.phone || user.phone || '',
+        email: user.email
+      } : null
+    })) || [];
+
+    res.json(pedidosConUsuario);
 
   } catch (error) {
     console.error('❌ Error interno obteniendo pedidos:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 };
-
-
 // Crear pedido desde carrito SIN limpiar carrito
 const crearPedidoManteniendoCarrito = async (req, res) => {
   try {
@@ -446,10 +458,10 @@ const crearPedido = async (req, res) => {
 
 // FUNCIÓN ACTUALIZADA para reemplazar en pedidosController.js
 
-// Crear pedido Y limpiar carrito (función principal)
+// Crear pedido Y limpiar carrito CON OPCIONES (función principal ACTUALIZADA)
 const crearPedidoYLimpiarCarrito = async (req, res) => {
   try {
-    console.log('📝 Creando pedido y limpiando carrito:', req.body);
+    console.log('📝 Creando pedido CON OPCIONES y limpiando carrito:', req.body);
 
     // Verificar autenticación
     const { user, profile } = await verifyAuth(req.headers.authorization);
@@ -462,8 +474,8 @@ const crearPedidoYLimpiarCarrito = async (req, res) => {
 
     console.log(`👤 Usuario autenticado: ${user.id}`);
 
-    // 1. Obtener carrito del usuario CON DEBUG
-    console.log('🔍 Consultando carrito en Supabase...');
+    // 1. Obtener carrito del usuario CON OPCIONES
+    console.log('🔍 Consultando carrito CON OPCIONES en Supabase...');
     
     const { data: cartItems, error: cartError } = await supabaseAdmin
       .from('cart')
@@ -480,6 +492,16 @@ const crearPedidoYLimpiarCarrito = async (req, res) => {
           precio,
           imagen,
           disponible
+        ),
+        cart_item_options (
+          id,
+          product_option_id,
+          product_options!inner (
+            id,
+            option_type,
+            option_value,
+            extra_price
+          )
         )
       `)
       .eq('user_id', user.id);
@@ -491,7 +513,13 @@ const crearPedidoYLimpiarCarrito = async (req, res) => {
         id: item.id,
         product: item.productos?.nombre,
         quantity: item.quantity,
-        precio: item.productos?.precio
+        precio_base: item.productos?.precio,
+        opciones_count: item.cart_item_options?.length || 0,
+        opciones: item.cart_item_options?.map(opt => ({
+          tipo: opt.product_options?.option_type,
+          valor: opt.product_options?.option_value,
+          precio_extra: opt.product_options?.extra_price
+        })) || []
       })) || []
     });
 
@@ -519,14 +547,27 @@ const crearPedidoYLimpiarCarrito = async (req, res) => {
       });
     }
 
-    // 3. Calcular total del pedido
+    // 3. Calcular total del pedido CON OPCIONES
     const totalCalculado = cartItems.reduce((sum, item) => {
-      const precio = parseFloat(item.productos?.precio || 0);
+      const precioBase = parseFloat(item.productos?.precio || 0);
+      const precioOpciones = (item.cart_item_options || []).reduce((opcionSum, opcion) => {
+        return opcionSum + parseFloat(opcion.product_options?.extra_price || 0);
+      }, 0);
       const cantidad = parseInt(item.quantity || 0);
-      return sum + (precio * cantidad);
+      
+      const precioTotalItem = (precioBase + precioOpciones) * cantidad;
+      
+      console.log(`📊 Item ${item.productos?.nombre}:`, {
+        precio_base: precioBase,
+        precio_opciones: precioOpciones,
+        cantidad: cantidad,
+        precio_total: precioTotalItem
+      });
+      
+      return sum + precioTotalItem;
     }, 0);
 
-    console.log(`💰 Total calculado: $${totalCalculado.toFixed(2)}`);
+    console.log(`💰 Total calculado CON OPCIONES: $${totalCalculado.toFixed(2)}`);
 
     // 4. Crear pedido principal
     const pedidoData = {
@@ -556,16 +597,24 @@ const crearPedidoYLimpiarCarrito = async (req, res) => {
 
     console.log(`✅ Pedido creado exitosamente: ${pedido.order_number} (ID: ${pedido.id})`);
 
-    // 5. Crear detalles del pedido
-    const detallesData = cartItems.map(item => ({
-      pedido_id: pedido.id,
-      producto_id: item.product_id,
-      cantidad: parseInt(item.quantity),
-      unit_price: parseFloat(item.productos.precio),
-      subtotal: parseFloat(item.productos.precio) * parseInt(item.quantity)
-    }));
+    // 5. Crear detalles del pedido CON PRECIOS CALCULADOS
+    const detallesData = cartItems.map(item => {
+      const precioBase = parseFloat(item.productos.precio);
+      const precioOpciones = (item.cart_item_options || []).reduce((sum, opcion) => {
+        return sum + parseFloat(opcion.product_options?.extra_price || 0);
+      }, 0);
+      const precioUnitarioTotal = precioBase + precioOpciones;
+      
+      return {
+        pedido_id: pedido.id,
+        producto_id: item.product_id,
+        cantidad: parseInt(item.quantity),
+        unit_price: precioUnitarioTotal, // ✅ PRECIO UNITARIO TOTAL (base + opciones)
+        subtotal: precioUnitarioTotal * parseInt(item.quantity) // ✅ SUBTOTAL CORRECTO
+      };
+    });
 
-    console.log('📄 Creando detalles del pedido:', detallesData);
+    console.log('📄 Creando detalles del pedido CON OPCIONES:', detallesData);
 
     const { data: detalles, error: detallesError } = await supabaseAdmin
       .from('detalle_pedidos')
@@ -590,7 +639,54 @@ const crearPedidoYLimpiarCarrito = async (req, res) => {
 
     console.log(`✅ Detalles del pedido creados: ${detalles.length} items`);
 
-    // 6. LIMPIAR CARRITO - PASO CRÍTICO
+    // 6. Crear opciones de items del pedido (order_item_options)
+    console.log('🔧 Creando opciones de items del pedido...');
+    
+    const opcionesItemsData = [];
+    
+    for (let i = 0; i < cartItems.length; i++) {
+      const cartItem = cartItems[i];
+      const detalleItem = detalles[i]; // Los detalles están en el mismo orden
+      
+      if (cartItem.cart_item_options && cartItem.cart_item_options.length > 0) {
+        const opcionesParaEsteItem = cartItem.cart_item_options.map(opcion => ({
+          detalle_pedido_id: detalleItem.id,
+          product_option_id: opcion.product_option_id,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }));
+        
+        opcionesItemsData.push(...opcionesParaEsteItem);
+      }
+    }
+
+    if (opcionesItemsData.length > 0) {
+      console.log(`📋 Insertando ${opcionesItemsData.length} opciones de items...`);
+      
+      const { data: opcionesItems, error: opcionesError } = await supabaseAdmin
+        .from('order_item_options')
+        .insert(opcionesItemsData)
+        .select(`
+          *,
+          product_options (
+            id,
+            option_type,
+            option_value,
+            extra_price
+          )
+        `);
+
+      if (opcionesError) {
+        console.error('⚠️ ERROR creando opciones de items (pero pedido fue creado):', opcionesError);
+        // No hacemos rollback aquí porque el pedido y detalles ya están creados correctamente
+      } else {
+        console.log(`✅ Opciones de items creadas: ${opcionesItems.length} opciones`);
+      }
+    } else {
+      console.log('ℹ️ No hay opciones para crear en este pedido');
+    }
+
+    // 7. LIMPIAR CARRITO - PASO CRÍTICO
     console.log('🧹 INICIANDO LIMPIEZA DEL CARRITO...');
     console.log(`🎯 Eliminando todos los items del usuario: ${user.id}`);
     
@@ -605,7 +701,7 @@ const crearPedidoYLimpiarCarrito = async (req, res) => {
       console.log(`✅ CARRITO LIMPIADO EXITOSAMENTE: ${count} items eliminados`);
     }
 
-    // 7. Verificar que el carrito esté realmente vacío
+    // 8. Verificar que el carrito esté realmente vacío
     console.log('🔍 Verificando que carrito esté vacío...');
     const { data: carritoVerificacion, error: verifyError } = await supabaseAdmin
       .from('cart')
@@ -617,25 +713,53 @@ const crearPedidoYLimpiarCarrito = async (req, res) => {
       itemsRestantes: carritoVerificacion?.length || 0
     });
 
-    // 8. Preparar respuesta completa
-    const pedidoCompleto = {
-      ...pedido,
-      detalle_pedidos: detalles,
+    // 9. Obtener pedido completo con opciones para la respuesta
+    const { data: pedidoCompleto, error: fetchError } = await supabaseAdmin
+      .from('pedidos')
+      .select(`
+        *,
+        detalle_pedidos (
+          *,
+          productos (
+            id,
+            nombre,
+            precio,
+            imagen
+          ),
+          order_item_options (
+            id,
+            product_options (
+              id,
+              option_type,
+              option_value,
+              extra_price
+            )
+          )
+        )
+      `)
+      .eq('id', pedido.id)
+      .single();
+
+    // 10. Preparar respuesta completa
+    const respuestaFinal = {
+      ...(pedidoCompleto || pedido),
       carrito_limpiado: !clearCartError,
       items_eliminados_carrito: count || 0,
-      carrito_verificado_vacio: (carritoVerificacion?.length || 0) === 0
+      carrito_verificado_vacio: (carritoVerificacion?.length || 0) === 0,
+      opciones_transferidas: opcionesItemsData.length
     };
 
-    console.log(`🎉 PROCESO COMPLETADO EXITOSAMENTE:`);
+    console.log(`🎉 PROCESO COMPLETADO EXITOSAMENTE CON OPCIONES:`);
     console.log(`   📦 Pedido: ${pedido.order_number}`);
-    console.log(`   💰 Total: $${pedido.total}`);
+    console.log(`   💰 Total: ${pedido.total}`);
+    console.log(`   🔧 Opciones transferidas: ${opcionesItemsData.length}`);
     console.log(`   🧹 Carrito limpiado: ${!clearCartError ? 'SÍ' : 'NO'}`);
     console.log(`   📊 Items eliminados: ${count || 0}`);
     
-    res.status(201).json(pedidoCompleto);
+    res.status(201).json(respuestaFinal);
 
   } catch (error) {
-    console.error('❌ ERROR CRÍTICO creando pedido:', error);
+    console.error('❌ ERROR CRÍTICO creando pedido CON OPCIONES:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 };

@@ -265,11 +265,264 @@ const refreshToken = async (req, res) => {
     res.status(500).json({ message: 'Error interno del servidor' });
   }
 };
+// Agregar este método a tu authController.js
+
+const syncOAuthUser = async (req, res) => {
+  try {
+    console.log('=== SINCRONIZANDO USUARIO OAUTH ===');
+    
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Token de autenticación requerido' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const { user: userData } = req.body;
+
+    if (!userData || !userData.id || !userData.email) {
+      return res.status(400).json({ message: 'Datos de usuario incompletos' });
+    }
+
+    console.log('Sincronizando usuario OAuth:', userData.email);
+
+    // Verificar token con Supabase
+    const { data: tokenData, error: tokenError } = await supabaseAdmin.auth.getUser(token);
+    
+    if (tokenError || !tokenData.user) {
+      console.log('❌ Token inválido');
+      return res.status(401).json({ message: 'Token inválido' });
+    }
+
+    // Verificar que el token pertenece al usuario correcto
+    if (tokenData.user.id !== userData.id) {
+      console.log('❌ Token no corresponde al usuario');
+      return res.status(403).json({ message: 'Token no válido para este usuario' });
+    }
+
+    // Buscar o crear perfil del usuario
+    let { data: profile, error: selectError } = await supabaseAdmin
+      .from('user_profiles')
+      .select('*')
+      .eq('id', userData.id)
+      .single();
+
+    if (selectError && selectError.code !== 'PGRST116') { // PGRST116 = no rows returned
+      console.log('❌ Error consultando perfil:', selectError);
+      return res.status(500).json({ message: 'Error consultando perfil' });
+    }
+
+    if (!profile) {
+      // Crear nuevo perfil para usuario OAuth
+      console.log('Creando nuevo perfil para usuario OAuth...');
+      
+      const { data: newProfile, error: insertError } = await supabaseAdmin
+        .from('user_profiles')
+        .insert({
+          id: userData.id,
+          first_name: userData.firstName || '',
+          last_name: userData.lastName || '',
+          role: 'CLIENT', // Por defecto CLIENT para usuarios OAuth
+          avatar_url: userData.avatar || null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.log('❌ Error creando perfil:', insertError);
+        return res.status(500).json({ message: 'Error creando perfil de usuario' });
+      }
+
+      profile = newProfile;
+      console.log('✅ Perfil creado para usuario OAuth');
+    } else {
+      // Actualizar perfil existente si es necesario
+      const updates = {};
+      let needsUpdate = false;
+
+      if (userData.firstName && profile.first_name !== userData.firstName) {
+        updates.first_name = userData.firstName;
+        needsUpdate = true;
+      }
+      
+      if (userData.lastName && profile.last_name !== userData.lastName) {
+        updates.last_name = userData.lastName;
+        needsUpdate = true;
+      }
+
+      if (userData.avatar && profile.avatar_url !== userData.avatar) {
+        updates.avatar_url = userData.avatar;
+        needsUpdate = true;
+      }
+
+      if (needsUpdate) {
+        updates.updated_at = new Date().toISOString();
+        
+        const { data: updatedProfile, error: updateError } = await supabaseAdmin
+          .from('user_profiles')
+          .update(updates)
+          .eq('id', userData.id)
+          .select()
+          .single();
+
+        if (updateError) {
+          console.log('⚠️ Error actualizando perfil:', updateError);
+        } else {
+          profile = updatedProfile;
+          console.log('✅ Perfil actualizado');
+        }
+      }
+    }
+
+    console.log('✅ Usuario OAuth sincronizado exitosamente');
+
+    res.status(200).json({
+      message: 'Usuario OAuth sincronizado',
+      user: {
+        id: tokenData.user.id,
+        email: tokenData.user.email,
+        firstName: profile?.first_name || '',
+        lastName: profile?.last_name || '',
+        phone: profile?.phone || '',
+        role: profile?.role || 'CLIENT',
+        avatar: profile?.avatar_url || null
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error sincronizando usuario OAuth:', error);
+    res.status(500).json({ message: 'Error interno del servidor' });
+  }
+};
+const googleOAuth = async (req, res) => {
+  try {
+    console.log('=== INICIANDO GOOGLE OAUTH ===');
+    
+    // CORREGIR: usar las variables correctas
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL; // ← CAMBIO AQUÍ
+    const redirectTo = process.env.FRONTEND_URL ? 
+      `${process.env.FRONTEND_URL}/login/callback` : 
+      'http://localhost:3000/login/callback';
+
+    console.log('Supabase URL:', supabaseUrl); // ← AGREGAR PARA DEBUG
+    console.log('Variables de entorno disponibles:', {
+      SUPABASE_URL: process.env.SUPABASE_URL,
+      NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+      FRONTEND_URL: process.env.FRONTEND_URL
+    });
+
+    if (!supabaseUrl) {
+      throw new Error('SUPABASE_URL no está configurada');
+    }
+
+    // Construir la URL de OAuth manualmente
+    const googleAuthUrl = `${supabaseUrl}/auth/v1/authorize?` +
+      `provider=google&` +
+      `redirect_to=${encodeURIComponent(redirectTo)}`;
+
+    console.log('URL de Google OAuth generada:', googleAuthUrl);
+
+    res.json({
+      success: true,
+      authUrl: googleAuthUrl,
+      redirectUrl: redirectTo
+    });
+
+  } catch (error) {
+    console.error('❌ Error en Google OAuth:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Error al generar URL de autenticación con Google',
+      error: error.message 
+    });
+  }
+};
+
+
+
+const googleCallback = async (req, res) => {
+  try {
+    console.log('=== PROCESANDO GOOGLE CALLBACK ===');
+    console.log('Query params:', req.query);
+    
+    const { access_token, refresh_token, error, error_description } = req.query;
+
+    if (error) {
+      console.log('❌ Error en callback:', error_description);
+      return res.redirect(`${process.env.FRONTEND_URL}/login?error=${encodeURIComponent(error_description || error)}`);
+    }
+
+    if (!access_token) {
+      console.log('❌ No se recibió access_token');
+      return res.redirect(`${process.env.FRONTEND_URL}/login?error=no_token`);
+    }
+
+    // Verificar token con Supabase
+    const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(access_token);
+
+    if (userError || !userData.user) {
+      console.log('❌ Error verificando usuario:', userError?.message);
+      return res.redirect(`${process.env.FRONTEND_URL}/login?error=invalid_user`);
+    }
+
+    console.log('✅ Usuario autenticado con Google:', userData.user.email);
+
+    // Buscar o crear perfil del usuario
+    let { data: profile, error: profileError } = await supabaseAdmin
+      .from('user_profiles')
+      .select('*')
+      .eq('id', userData.user.id)
+      .single();
+
+    if (profileError && profileError.code === 'PGRST116') {
+      // Usuario no existe, crear perfil
+      console.log('Creando perfil para usuario de Google...');
+      
+      const userMetadata = userData.user.user_metadata || {};
+      
+      const { data: newProfile, error: insertError } = await supabaseAdmin
+        .from('user_profiles')
+        .insert({
+          id: userData.user.id,
+          first_name: userMetadata.full_name?.split(' ')[0] || userMetadata.name?.split(' ')[0] || '',
+          last_name: userMetadata.full_name?.split(' ').slice(1).join(' ') || userMetadata.name?.split(' ').slice(1).join(' ') || '',
+          role: 'CLIENT',
+          avatar_url: userMetadata.picture || userMetadata.avatar_url || null,
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.log('❌ Error creando perfil:', insertError);
+      } else {
+        profile = newProfile;
+        console.log('✅ Perfil creado para usuario de Google');
+      }
+    }
+
+    // Redirigir al frontend con los tokens
+    const redirectUrl = `${process.env.FRONTEND_URL}/login/callback?` +
+      `access_token=${access_token}&` +
+      `refresh_token=${refresh_token || ''}&` +
+      `user_id=${userData.user.id}`;
+
+    console.log('✅ Redirigiendo al frontend con tokens');
+    res.redirect(redirectUrl);
+
+  } catch (error) {
+    console.error('❌ Error en callback de Google:', error);
+    res.redirect(`${process.env.FRONTEND_URL}/login?error=callback_error`);
+  }
+};
 
 module.exports = { 
   login, 
   register, 
   verifyToken, 
   logout, 
-  refreshToken 
+  refreshToken,
+  syncOAuthUser,
+  googleOAuth,
+  googleCallback
 };
