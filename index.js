@@ -219,7 +219,7 @@ app.listen(PORT, () => {
   
   // Información de configuración
   console.log('📋 Configuración:');
-  console.log(`   - Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
+  console.log(`   - Frontend URL: ${process.env.FRONTEND_URL || 'https://restaurante1-beryl.vercel.app'}`);
   console.log(`   - Node ENV: ${process.env.NODE_ENV || 'development'}`);
   console.log(
     `   - Supabase URL: ${process.env.NEXT_PUBLIC_SUPABASE_URL ? '✅ Configurado' : '❌ No configurado'}`

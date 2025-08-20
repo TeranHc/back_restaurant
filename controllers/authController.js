@@ -265,7 +265,6 @@ const refreshToken = async (req, res) => {
     res.status(500).json({ message: 'Error interno del servidor' });
   }
 };
-// Agregar este método a tu authController.js
 
 const syncOAuthUser = async (req, res) => {
   try {
@@ -395,22 +394,21 @@ const syncOAuthUser = async (req, res) => {
     res.status(500).json({ message: 'Error interno del servidor' });
   }
 };
+
+// FUNCIÓN ACTUALIZADA PARA PRODUCCIÓN
 const googleOAuth = async (req, res) => {
   try {
     console.log('=== INICIANDO GOOGLE OAUTH ===');
     
-    // CORREGIR: usar las variables correctas
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL; // ← CAMBIO AQUÍ
-    const redirectTo = process.env.FRONTEND_URL ? 
-      `${process.env.FRONTEND_URL}/login/callback` : 
-      'http://localhost:3000/login/callback';
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    
+    // CAMBIO PRINCIPAL: Usar la URL de producción de Vercel
+    const frontendUrl = process.env.FRONTEND_URL || 'https://restaurante1-beryl.vercel.app';
+    const redirectTo = `${frontendUrl}/login/callback`;
 
-    console.log('Supabase URL:', supabaseUrl); // ← AGREGAR PARA DEBUG
-    console.log('Variables de entorno disponibles:', {
-      SUPABASE_URL: process.env.SUPABASE_URL,
-      NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-      FRONTEND_URL: process.env.FRONTEND_URL
-    });
+    console.log('Frontend URL:', frontendUrl);
+    console.log('Redirect URL:', redirectTo);
+    console.log('Supabase URL:', supabaseUrl);
 
     if (!supabaseUrl) {
       throw new Error('SUPABASE_URL no está configurada');
@@ -439,8 +437,6 @@ const googleOAuth = async (req, res) => {
   }
 };
 
-
-
 const googleCallback = async (req, res) => {
   try {
     console.log('=== PROCESANDO GOOGLE CALLBACK ===');
@@ -448,14 +444,17 @@ const googleCallback = async (req, res) => {
     
     const { access_token, refresh_token, error, error_description } = req.query;
 
+    // CAMBIO: Usar la URL de producción
+    const frontendUrl = process.env.FRONTEND_URL || 'https://restaurante1-beryl.vercel.app';
+
     if (error) {
       console.log('❌ Error en callback:', error_description);
-      return res.redirect(`${process.env.FRONTEND_URL}/login?error=${encodeURIComponent(error_description || error)}`);
+      return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(error_description || error)}`);
     }
 
     if (!access_token) {
       console.log('❌ No se recibió access_token');
-      return res.redirect(`${process.env.FRONTEND_URL}/login?error=no_token`);
+      return res.redirect(`${frontendUrl}/login?error=no_token`);
     }
 
     // Verificar token con Supabase
@@ -463,7 +462,7 @@ const googleCallback = async (req, res) => {
 
     if (userError || !userData.user) {
       console.log('❌ Error verificando usuario:', userError?.message);
-      return res.redirect(`${process.env.FRONTEND_URL}/login?error=invalid_user`);
+      return res.redirect(`${frontendUrl}/login?error=invalid_user`);
     }
 
     console.log('✅ Usuario autenticado con Google:', userData.user.email);
@@ -502,7 +501,7 @@ const googleCallback = async (req, res) => {
     }
 
     // Redirigir al frontend con los tokens
-    const redirectUrl = `${process.env.FRONTEND_URL}/login/callback?` +
+    const redirectUrl = `${frontendUrl}/login/callback?` +
       `access_token=${access_token}&` +
       `refresh_token=${refresh_token || ''}&` +
       `user_id=${userData.user.id}`;
@@ -512,7 +511,8 @@ const googleCallback = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error en callback de Google:', error);
-    res.redirect(`${process.env.FRONTEND_URL}/login?error=callback_error`);
+    const frontendUrl = process.env.FRONTEND_URL || 'https://restaurante1-beryl.vercel.app';
+    res.redirect(`${frontendUrl}/login?error=callback_error`);
   }
 };
 
