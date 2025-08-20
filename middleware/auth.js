@@ -166,9 +166,86 @@ const verificarPropietarioOAdmin = (resourceIdParam = 'userId') => {
   };
 };
 
-module.exports = { 
-  verificarToken,
-  verificarAdmin,
-  verificarTokenOAdmin,
-  verificarPropietarioOAdmin
+// middleware/security.js - COMPLEMENTO PARA TU MIDDLEWARE EXISTENTE
+const rateLimit = require('express-rate-limit');
+
+// Rate limiting para rutas de autenticación
+const authRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 5, // máximo 5 intentos por IP
+  message: {
+    error: 'Demasiados intentos de autenticación. Intenta de nuevo en 15 minutos.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// Rate limiting más estricto para registro
+const registerRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hora
+  max: 3, // máximo 3 registros por IP por hora
+  message: {
+    error: 'Demasiados intentos de registro. Intenta de nuevo en 1 hora.'
+  }
+});
+
+// Middleware para validar formato de email
+const validateEmailFormat = (req, res, next) => {
+  const { email } = req.body;
+  
+  if (email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        error: 'Formato de email inválido'
+      });
+    }
+  }
+  
+  next();
+};
+
+// Middleware para sanitizar datos de entrada
+const sanitizeInput = (req, res, next) => {
+  if (req.body) {
+    // Remover espacios en blanco de strings
+    Object.keys(req.body).forEach(key => {
+      if (typeof req.body[key] === 'string') {
+        req.body[key] = req.body[key].trim();
+      }
+    });
+  }
+  
+  next();
+};
+
+// Middleware de validación de origen para OAuth (opcional)
+const validateOAuthOrigin = (req, res, next) => {
+  const allowedOrigins = [
+    'https://restaurante1-beryl.vercel.app',
+    process.env.FRONTEND_URL
+  ].filter(Boolean);
+
+  const origin = req.headers.origin || req.headers.referer;
+  
+  // En desarrollo, permitir localhost
+  if (process.env.NODE_ENV === 'development') {
+    allowedOrigins.push('http://localhost:3000');
+  }
+  
+  if (!origin || !allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+    return res.status(403).json({
+      error: 'Origen no autorizado'
+    });
+  }
+  
+  next();
+};
+
+module.exports = {
+  authRateLimit,
+  registerRateLimit,
+  validateEmailFormat,
+  sanitizeInput,
+  validateOAuthOrigin
 };
