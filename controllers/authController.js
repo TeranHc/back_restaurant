@@ -148,6 +148,7 @@ const register = async (req, res) => {
   }
 };
 
+// REEMPLAZAR tu función verifyToken en controllers/authController.js
 const verifyToken = async (req, res) => {
   try {
     console.log('=== VERIFICANDO TOKEN SUPABASE ===');
@@ -178,7 +179,7 @@ const verifyToken = async (req, res) => {
     console.log('Token válido - User ID:', userData.user.id);
 
     // Obtener perfil del usuario
-    const { data: profile, error: profileError } = await supabaseAdmin
+    let { data: profile, error: profileError } = await supabaseAdmin
       .from('user_profiles')
       .select('*')
       .eq('id', userData.user.id)
@@ -186,12 +187,75 @@ const verifyToken = async (req, res) => {
 
     console.log('Perfil obtenido:', profile ? 'SÍ' : 'NO');
 
-    if (profileError) {
-      console.log('⚠️ Error obteniendo perfil, usando datos básicos');
+    // **NUEVA LÓGICA: Manejar usuarios de Google sin perfil**
+    if (profileError && profileError.code === 'PGRST116') {
+      // No existe perfil, crear uno con datos de Google
+      console.log('⚠️ Perfil no existe, creando con datos de Google...');
+      
+      const userMetadata = userData.user.user_metadata || {};
+      const fullName = userMetadata.full_name || userMetadata.name || userData.user.email;
+      const firstName = userMetadata.first_name || userMetadata.given_name || fullName.split(' ')[0] || '';
+      const lastName = userMetadata.last_name || userMetadata.family_name || fullName.split(' ').slice(1).join(' ') || '';
+      
+      console.log('Datos de Google extraídos:', { firstName, lastName, fullName });
+
+      const { data: newProfile, error: createError } = await supabaseAdmin
+        .from('user_profiles')
+        .insert({
+          id: userData.user.id,
+          first_name: firstName.trim() || null,
+          last_name: lastName.trim() || null,
+          phone: userMetadata.phone || null,
+          role: 'CLIENT'
+        })
+        .select()
+        .single();
+      
+      if (createError) {
+        console.log('❌ Error creando perfil:', createError);
+        // Continuar con datos básicos aunque falle
+      } else {
+        profile = newProfile;
+        console.log('✅ Perfil creado exitosamente para usuario de Google');
+      }
+    } else if (!profileError && profile) {
+      // **NUEVA LÓGICA: Sincronizar datos faltantes en perfiles existentes**
+      if (!profile.first_name || !profile.last_name) {
+        console.log('⚠️ Perfil existe pero le faltan datos, sincronizando...');
+        
+        const userMetadata = userData.user.user_metadata || {};
+        const fullName = userMetadata.full_name || userMetadata.name || userData.user.email;
+        const firstName = userMetadata.first_name || userMetadata.given_name || fullName.split(' ')[0] || '';
+        const lastName = userMetadata.last_name || userMetadata.family_name || fullName.split(' ').slice(1).join(' ') || '';
+        
+        if (firstName.trim() || lastName.trim()) {
+          const { data: updatedProfile, error: updateError } = await supabaseAdmin
+            .from('user_profiles')
+            .update({
+              first_name: firstName.trim() || profile.first_name,
+              last_name: lastName.trim() || profile.last_name,
+              phone: userMetadata.phone || profile.phone,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', userData.user.id)
+            .select()
+            .single();
+          
+          if (!updateError && updatedProfile) {
+            profile = updatedProfile;
+            console.log('✅ Perfil sincronizado exitosamente');
+          } else {
+            console.log('⚠️ Error sincronizando perfil:', updateError?.message);
+          }
+        }
+      }
+    } else if (profileError) {
+      console.log('⚠️ Error obteniendo perfil, usando datos básicos:', profileError.message);
     }
 
     console.log('✅ Token verificado correctamente');
 
+    // **MANTENER EL MISMO FORMATO DE RESPUESTA**
     res.status(200).json({
       id: userData.user.id,
       email: userData.user.email,
@@ -206,7 +270,6 @@ const verifyToken = async (req, res) => {
     res.status(500).json({ message: 'Error interno del servidor' });
   }
 };
-
 const logout = async (req, res) => {
   try {
     console.log('=== CERRANDO SESIÓN ===');
